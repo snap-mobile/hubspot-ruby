@@ -122,3 +122,18 @@ describe Hubspot::Connection do
     end
   end
 end
+
+describe Hubspot::EventConnection do
+  describe '.complete' do
+    let(:path) { '/path' }
+    let(:options) { { params: {} } }
+
+    subject { described_class.complete(path, options) }
+    before { Hubspot.configure(hapikey: 'demo', portal_id: '62515') }
+
+    it 'calls get with a custom url' do
+      mock(described_class).get('https://track.hubspot.com/path', body: nil) { true }
+      subject
+    end
+  end
+end
