@@ -132,8 +132,18 @@ describe Hubspot::EventConnection do
     before { Hubspot.configure(hapikey: 'demo', portal_id: '62515') }
 
     it 'calls get with a custom url' do
-      mock(described_class).get('https://track.hubspot.com/path', body: nil) { true }
+      mock(described_class).get('https://track.hubspot.com/path', body: nil, headers: nil) { true }
       subject
+    end
+
+    context 'with more options' do
+      let(:headers) { { 'User-Agent' => 'something' } }
+      let(:options) { { params: {}, headers: headers } }
+
+      it 'supports headers' do
+        mock(described_class).get('https://track.hubspot.com/path', body: nil, headers: headers) { true }
+        subject
+      end
     end
   end
 end

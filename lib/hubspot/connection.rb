@@ -104,7 +104,7 @@ module Hubspot
   class EventConnection < Connection
     def self.complete(path, opts)
       url = generate_url(path, opts[:params], { base_url: 'https://track.hubspot.com', hapikey: false })
-      get(url, body: opts[:body])
+      get(url, body: opts[:body], headers: opts[:headers])
     end
   end
 end
