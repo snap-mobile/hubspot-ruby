@@ -58,8 +58,28 @@ RSpec.describe Hubspot::Company do
       end
     end
 
-    context 'with properties' do
-      cassette
+  describe ".update!" do
+    cassette "company_update_class"
+    let(:company) { Hubspot::Company.create!("New Company #{Time.now.to_i}") }
+    let(:params) { { name: "Acme Flask", domain: "abcflasks.com" } }
+    subject { Hubspot::Company.update!(company.vid, params) }
+
+    it { should be_an_instance_of Hubspot::Company }
+    its(["name"]) { should == "Acme Flask" }
+    its(["domain"]) { should == "abcflasks.com" }
+
+    context "when the request is not successful" do
+      let(:company){ Hubspot::Company.new("vid" => "invalid", "properties" => {})}
+      it "raises an error" do
+        expect{ subject }.to raise_error Hubspot::RequestError
+      end
+    end
+  end
+
+  describe ".find_by_id" do
+    context 'given an uniq id' do
+      cassette "company_find_by_id"
+      subject{ Hubspot::Company.find_by_id(vid) }
 
       let(:name) { "Foo Bar Inc." }
       let(:properties) { { name: name } }
@@ -236,8 +256,11 @@ RSpec.describe Hubspot::Company do
     end
   end
 
-  describe '.search_domain' do
-    cassette
+  describe "#update!" do
+    cassette "company_update_instance"
+    let(:company){ Hubspot::Company.create!("New Company #{Time.now.to_i}") }
+    let(:params){ {name: "Acme Cogs", domain: "abccogs.com"} }
+    subject{ company.update!(params) }
 
     let!(:company) { create :company }
 

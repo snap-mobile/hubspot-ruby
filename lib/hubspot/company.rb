@@ -96,65 +96,148 @@ class Hubspot::Company < Hubspot::Resource
       true
     end
 
-    def batch_update(companies, opts = {})
-      request = companies.map do |company|
-        # Use the specified options or update with the changes
-        changes = opts.empty? ? company.changes : opts
-
-        unless changes.empty?
-          {
-            "objectId" => company.id,
-            "properties" => changes.map { |k, v| { "name" => k, "value" => v } }
+    # Updates the properties of companies
+    # NOTE: Up to 100 companies can be updated in a single request. There is no limit to the number of properties that can be updated per company.
+    # {https://developers.hubspot.com/docs/methods/companies/batch-update-companies}
+    # Returns a 202 Accepted response on success.
+    def batch_update!(companies)
+      query = companies.map do |company|
+        company_hash = company.with_indifferent_access
+        if company_hash[:vid]
+          # For consistency - Since vid has been used everywhere.
+          company_param = {
+            objectId: company_hash[:vid],
+            properties: Hubspot::Utils.hash_to_properties(company_hash.except(:vid).stringify_keys!, key_name: 'name'),
           }
+        elsif company_hash[:objectId]
+          company_param = {
+            objectId: company_hash[:objectId],
+            properties: Hubspot::Utils.hash_to_properties(company_hash.except(:objectId).stringify_keys!, key_name: 'name'),
+          }
+        else
+          raise Hubspot::InvalidParams, 'expecting vid or objectId for company'
         end
+        company_param
       end
-
-      # Remove any objects without changes and return if there is nothing to update
-      request.compact!
-      return true if request.empty?
-
-      Hubspot::Connection.post_json(
-        BATCH_UPDATE_PATH,
-        params: {},
-        body: request
-      )
-
-      true
+      Hubspot::Connection.post_json(BATCH_UPDATE_PATH, params: {}, body: query)
     end
-  end
 
-  def contacts(opts = {})
-    Hubspot::PagedCollection.new(opts) do |options, offset, limit|
-      response = Hubspot::Connection.get_json(
-        CONTACTS_PATH,
-        {"id" => @id, "vidOffset" => offset, "count" => limit}
-      )
+    # Adds contact to a company
+    # {http://developers.hubspot.com/docs/methods/companies/add_contact_to_company}
+    # @param company_vid [Integer] The ID of a company to add a contact to
+    # @param contact_vid [Integer] contact id to add
+    # @return parsed response
+    def add_contact!(company_vid, contact_vid)
+      Hubspot::Connection.put_json(ADD_CONTACT_TO_COMPANY_PATH,
+                                    params: {
+                                      company_id: company_vid,
+                                      vid: contact_vid,
+                                    },
+                                    body: nil)
+    end
 
-      contacts = response["contacts"].map do |result|
-        result["properties"] = Hubspot::Utils.properties_array_to_hash(result["properties"])
-        Hubspot::Contact.from_result(result)
+    # Updates the properties of a company
+    # {http://developers.hubspot.com/docs/methods/companies/update_company}
+    # @param vid [Integer] hubspot company vid
+    # @param params [Hash] hash of properties to update
+    # @return [Hubspot::Company] Company record
+    def update!(vid, params)
+      params.stringify_keys!
+      query = {"properties" => Hubspot::Utils.hash_to_properties(params, key_name: "name")}
+      response = Hubspot::Connection.put_json(UPDATE_COMPANY_PATH, params: { company_id: vid }, body: query)
+      new(response)
+    end
+
+    attr_reader :properties
+    attr_reader :vid, :name
+
+    def initialize(response_hash)
+      @properties = Hubspot::Utils.properties_to_hash(response_hash["properties"])
+      @vid = response_hash["companyId"]
+      @name = @properties.try(:[], "name")
+    end
+
+    def [](property)
+      @properties[property]
+    end
+
+    # Updates the properties of a company
+    # {http://developers.hubspot.com/docs/methods/companies/update_company}
+    # @param params [Hash] hash of properties to update
+    # @return [Hubspot::Company] self
+    def update!(params)
+      self.class.update!(vid, params)
+      @properties.merge!(params)
+      self
+    end
+
+    # Gets ALL contact vids of a company
+    # May make many calls if the company has a mega-ton of contacts
+    # {http://developers.hubspot.com/docs/methods/companies/get_company_contacts_by_id}
+    # @return [Array] contact vids
+    def get_contact_vids
+      vid_offset = nil
+      vids = []
+      loop do
+        data = Hubspot::Connection.get_json(GET_COMPANY_CONTACT_VIDS_PATH,
+                                            company_id: vid,
+                                            vidOffset: vid_offset)
+        vids += data['vids']
+        return vids unless data['hasMore']
+        vid_offset = data['vidOffset']
       end
-
-      [contacts, response["vidOffset"], response["hasMore"]]
+      vids # this statement will never be executed.
     end
-  end
 
-  def contact_ids(opts = {})
-    Hubspot::PagedCollection.new(opts) do |options, offset, limit|
-      response = Hubspot::Connection.get_json(
-        CONTACT_IDS_PATH,
-        {"id" => @id, "vidOffset" => offset, "count" => limit}
-      )
-
-      [response["vids"], response["vidOffset"], response["hasMore"]]
+    # Adds contact to a company
+    # {http://developers.hubspot.com/docs/methods/companies/add_contact_to_company}
+    # @param id [Integer] contact id to add
+    # @return [Hubspot::Company] self
+    def add_contact(contact_or_vid)
+      contact_vid = if contact_or_vid.is_a?(Hubspot::Contact)
+                      contact_or_vid.vid
+                    else
+                      contact_or_vid
+                    end
+      self.class.add_contact!(vid, contact_vid)
+      self
     end
-  end
 
-  def add_contact(contact)
-    self.class.add_contact(@id, contact.to_i)
-  end
+    # Archives the company in hubspot
+    # {http://developers.hubspot.com/docs/methods/companies/delete_company}
+    # @return [TrueClass] true
+    def destroy!
+      Hubspot::Connection.delete_json(DESTROY_COMPANY_PATH, { company_id: vid })
+      @destroyed = true
+    end
 
-  def remove_contact(contact)
-    self.class.remove_contact(@id, contact.to_i)
+    def destroyed?
+      !!@destroyed
+    end
+
+    # Finds company contacts
+    # {http://developers.hubspot.com/docs/methods/companies/get_company_contacts}
+    # @return [Array] Array of Hubspot::Contact records
+    def contacts
+      response = Hubspot::Connection.get_json(GET_COMPANY_CONTACTS_PATH, company_id: vid)
+      response['contacts'].each_with_object([]) do |contact, memo|
+        memo << Hubspot::Contact.find_by_id(contact['vid'])
+      end
+    end
+
+    def contact_ids(opts = {})
+      Hubspot::PagedCollection.new(opts) do |options, offset, limit|
+        response = Hubspot::Connection.get_json(
+          CONTACT_IDS_PATH,
+          {"id" => @id, "vidOffset" => offset, "count" => limit}
+        )
+
+        [response["vids"], response["vidOffset"], response["hasMore"]]
+      end
+    end
+
+    def remove_contact(contact)
+      self.class.remove_contact(@id, contact.to_i)
+    end
   end
 end
