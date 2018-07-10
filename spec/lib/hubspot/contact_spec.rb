@@ -179,15 +179,42 @@ RSpec.describe Hubspot::Contact do
       end
     end
 
-    context 'with invalid contact ids' do
-      cassette
+  describe '.update!' do
+    cassette 'contact_update_class'
+    let(:contact) { Hubspot::Contact.create!("update_class_contact_#{Time.now.to_i}@hsgem.com") }
+    let(:params) { { firstname: 'Steve', lastname: 'Cunningham' } }
+    let(:vid_to_update) { contact.vid }
+    subject { Hubspot::Contact.update!(vid_to_update, params) }
 
-      subject { described_class.merge 1, 2 }
+    it 'updates the contact' do
+      subject
+      found_contact = Hubspot::Contact.find_by_id(contact.vid)
+      found_contact['firstname'].should == 'Steve'
+      found_contact['lastname'].should == 'Cunningham'
+    end
 
+    context 'when the request is not successful' do
       it 'raises an error' do
-        expect {
-          subject
-        }.to raise_error(Hubspot::RequestError)
+        skip 'hubspot does not send a 404 anymore'
+        # https://github.com/adimichele/hubspot-ruby/issues/124
+      end
+    end
+  end
+
+  describe '#update!' do
+    cassette 'contact_update_instance'
+    let(:contact){ Hubspot::Contact.create!("update_instance_contact_#{Time.now.to_i}@hsgem.com") }
+    let(:params) { { firstname: 'Steve', lastname: 'Cunningham' } }
+    subject { contact.update!(params) }
+
+    it { should be_an_instance_of Hubspot::Contact }
+    its(['firstname']) { should == 'Steve' }
+    its(['lastname']) { should == 'Cunningham' }
+
+    context 'when the request is not successful' do
+      it 'raises an error' do
+        skip 'hubspot does not send a 404 anymore'
+        # https://github.com/adimichele/hubspot-ruby/issues/124
       end
     end
   end

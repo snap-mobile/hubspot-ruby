@@ -70,6 +70,63 @@ class Hubspot::Contact < Hubspot::Resource
 
       true
     end
+
+    # Updates the properties of a contact
+    # {https://developers.hubspot.com/docs/methods/contacts/update_contact}
+    # @param params [Hash] hash of properties to update
+    def update!(vid, params = {})
+      query = {"properties" => Hubspot::Utils.hash_to_properties(params.stringify_keys!)}
+      Hubspot::Connection.post_json(UPDATE_CONTACT_PATH, params: { contact_id: vid }, body: query)
+    end
+
+    attr_reader :properties, :vid, :is_new
+    attr_reader :is_contact, :list_memberships
+
+    def initialize(response_hash)
+      props = response_hash['properties']
+      @properties = Hubspot::Utils.properties_to_hash(props) unless props.blank?
+      @is_contact = response_hash["is-contact"]
+      @list_memberships = response_hash["list-memberships"] || []
+      @vid = response_hash['vid']
+    end
+
+    def [](property)
+      @properties[property]
+    end
+
+    def email
+      @properties['email']
+    end
+
+    def utk
+      @properties['usertoken']
+    end
+
+    def is_new=(val)
+      @is_new = val
+    end
+
+    # Updates the properties of a contact
+    # {https://developers.hubspot.com/docs/methods/contacts/update_contact}
+    # @param params [Hash] hash of properties to update
+    # @return [Hubspot::Contact] self
+    def update!(params)
+      self.class.update!(vid, params)
+      @properties.merge!(params)
+      self
+    end
+
+    # Archives the contact in hubspot
+    # {https://developers.hubspot.com/docs/methods/contacts/delete_contact}
+    # @return [TrueClass] true
+    def destroy!
+      Hubspot::Connection.delete_json(DESTROY_CONTACT_PATH, { contact_id: vid })
+      @destroyed = true
+    end
+
+    def destroyed?
+      !!@destroyed
+    end
   end
 
   def name
