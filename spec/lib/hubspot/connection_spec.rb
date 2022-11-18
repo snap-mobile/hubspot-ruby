@@ -12,7 +12,7 @@ describe Hubspot::Connection do
       @http_response.body { 'mocked response' }
 
       mock(Hubspot::Connection).generate_url(@url, {}) { @url }
-      mock(Hubspot::Connection).get(@url, format: :json) { @http_response }
+      mock(Hubspot::Connection).get(@url, headers: {}, format: :json) { @http_response }
       Hubspot::Connection.get_json(@url, {})
     end
   end
@@ -23,7 +23,6 @@ describe Hubspot::Connection do
       @http_response.parsed_response { {} }
       @http_response.code { 200 }
       @http_response.body { 'mocked response' }
-
       mock(Hubspot::Connection).generate_url(@url, {}) { @url }
       mock(Hubspot::Connection).post(@url, body: "{}", headers: {"Content-Type"=>"application/json"}, format: :json) { @http_response }
       Hubspot::Connection.post_json(@url, params: {}, body: {})
@@ -37,13 +36,59 @@ describe Hubspot::Connection do
       @http_response.body { 'mocked response' }
 
       mock(Hubspot::Connection).generate_url(@url, {}) { @url }
-      mock(Hubspot::Connection).delete(@url, format: :json) { @http_response }
+      mock(Hubspot::Connection).delete(@url, headers: {}, format: :json) { @http_response }
       Hubspot::Connection.delete_json(@url, {})
     end
   end
 
   context 'private methods' do
-    describe ".generate_url" do
+    describe ".generate_url_access_token" do
+      let(:access_token){"pat-na1-test"}
+      let(:path){ "/test/:email/profile" }
+      let(:params){{email: "test"}}
+      let(:options){{}}
+      subject{ Hubspot::Connection.send(:generate_url, path, params, options) }
+      before{ Hubspot.configure(access_token: access_token, portal_id: "62515") }
+      context "containing a time" do
+        let(:start_time) { Time.now }
+        let(:params){{email: "email@address.com", id: 1234, start: start_time}}
+        it{
+          should == "https://api.hubapi.com/test/email%40address.com/profile?id=1234&start=#{start_time.to_i * 1000}" 
+        }
+      end
+
+      describe '.get_json_with_access_token_in_header' do        
+        it 'delegates url format to Hubspot::Utils, call HTTParty get and returns response' do
+          @http_response.success? { true }
+          @http_response.parsed_response { {} }
+          @http_response.code { 200 }
+          @http_response.body { 'mocked response' }
+    
+          mock(Hubspot::Connection).generate_url(@url, {}) { @url }
+          mock(Hubspot::Connection).get(@url, headers: {"Authorization"=>"Bearer #{access_token}"}, format: :json) { @http_response }
+          Hubspot::Connection.get_json(@url, {})
+        end
+      end
+
+      describe '.post_json_with_access_token_in_header' do
+        it 'delegates url format to Hubspot::Utils, call HTTParty post and returns response' do
+          @http_response.success? { true }
+          @http_response.parsed_response { {} }
+          @http_response.code { 200 }
+          @http_response.body { 'mocked response' }
+          mock(Hubspot::Connection).generate_url(@url, {}) { @url }
+          mock(Hubspot::Connection).post(
+            @url, 
+            body: "{}", 
+            headers: {"Content-Type"=>"application/json", "Authorization"=>"Bearer #{access_token}"}, 
+            format: :json
+          ) { @http_response }
+          Hubspot::Connection.post_json(@url, params: {}, body: {})
+        end
+      end
+    end
+    
+    describe ".generate_url_hapikey" do
       let(:path){ "/test/:email/profile" }
       let(:params){{email: "test"}}
       let(:options){{}}
