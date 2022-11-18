@@ -5,7 +5,7 @@ module Hubspot
     class << self
       def get_json(path, opts)
         url = generate_url(path, opts)
-        response = get(url, format: :json, read_timeout: read_timeout(opts), open_timeout: open_timeout(opts))
+        response = get(url, headers: create_access_headers(), format: :json, read_timeout: read_timeout(opts), open_timeout: open_timeout(opts))
         log_request_and_response url, response
         handle_response(response)
       end
@@ -17,7 +17,7 @@ module Hubspot
         response = post(
           url,
           body: opts[:body].to_json,
-          headers: { 'Content-Type' => 'application/json' },
+          headers: create_access_headers(true),
           format: :json,
           read_timeout: read_timeout(opts),
           open_timeout: open_timeout(opts)
@@ -36,7 +36,7 @@ module Hubspot
         response = put(
           url,
           body: options[:body].to_json,
-          headers: { "Content-Type" => "application/json" },
+          headers: create_access_headers(true),
           format: :json,
           read_timeout: read_timeout(options),
           open_timeout: open_timeout(options),
@@ -50,7 +50,7 @@ module Hubspot
 
       def delete_json(path, opts)
         url = generate_url(path, opts)
-        response = delete(url, format: :json, read_timeout: read_timeout(opts), open_timeout: open_timeout(opts))
+        response = delete(url, headers: create_access_headers(), format: :json, read_timeout: read_timeout(opts), open_timeout: open_timeout(opts))
         log_request_and_response url, response, opts[:body]
         raise(Hubspot::RequestError.new(response)) unless response.success?
         response
@@ -73,6 +73,21 @@ module Hubspot
           raise(Hubspot::RequestError.new(response))
         end
       end
+
+      def create_access_headers(has_request_body=false)
+        headers = {}
+        if Hubspot::Config.access_token
+          headers = { 'Authorization' => "Bearer #{Hubspot::Config.access_token}" }
+          if has_request_body 
+            headers = { 'Content-Type' => 'application/json', 'Authorization' => "Bearer #{Hubspot::Config.access_token}"}  
+          end
+        else
+          if has_request_body
+            headers = { 'Content-Type' => 'application/json' }
+          end
+        end
+        headers
+      end 
 
       def log_request_and_response(uri, response, body=nil)
         Hubspot::Config.logger.info(<<~MSG)
